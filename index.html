@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>壽宴 GM 掌上控制台</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            theme: {
+              base: '#101216',
+              card: '#191c24',
+              surface: '#222632',
+              border: '#2f3545',
+              gold: '#d4af37',
+              goldLight: '#f3e5ab',
+              crimson: '#dc2626',
+              crimsonBg: '#2d1417',
+              alertAmber: '#d97706',
+              alertBg: '#2e1c0c',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* iOS / Android 觸控體驗優化 */
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .user-select-text {
+      user-select: text !important;
+      -webkit-user-select: text !important;
+    }
+    /* 自訂滾動條 */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #374151;
+      border-radius: 4px;
+    }
+    /* 底部安全邊距 (適配 iPhone 瀏海與 Home 指示條) */
+    .pb-safe {
+      padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 16px));
+    }
+    .bottom-nav-safe {
+      padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 8px));
+    }
+  </style>
+</head>
+<body class="bg-theme-base text-gray-100 font-sans antialiased min-h-screen flex flex-col justify-between selection:bg-amber-600 selection:text-white">
+
+  <!-- 頂部導航欄 -->
+  <header class="sticky top-0 z-40 bg-theme-base/95 backdrop-blur-md border-b border-theme-border px-4 py-3 flex items-center justify-between shadow-lg">
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-theme-gold animate-pulse"></span>
+        <h1 class="text-base font-bold tracking-wider text-theme-gold">壽宴 · GM 掌上控制台</h1>
+      </div>
+      <p class="text-[11px] text-gray-400 mt-0.5">7～10人實時算卡 · 台詞提示 · 兇手速查</p>
+    </div>
+    <div id="quickStatusBadge" class="text-xs px-2.5 py-1 rounded-full bg-theme-surface border border-theme-border text-gray-300 font-mono">
+      缺席: 0 / 12
+    </div>
+  </header>
+
+  <!-- 主內容容器 -->
+  <div class="flex-1 w-full max-w-lg mx-auto pb-safe">
+
+    <!-- ==================== TAB 1: 角色勾選 ==================== -->
+    <section id="view-tab1" class="tab-view p-4">
+      <div class="mb-3 flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-bold text-gray-200">本次【缺席 / 移除】角色</h2>
+          <p class="text-xs text-gray-400">點擊切換狀態（紅色為缺席）</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="saveRolesToLocal(true)" class="text-xs px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-bold active:scale-95 transition shadow">
+            儲存名單
+          </button>
+          <button onclick="resetAllRoles()" class="text-xs px-2 py-1 rounded bg-theme-surface hover:bg-gray-700 text-gray-300 active:scale-95 transition border border-theme-border">
+            重置全員
+          </button>
+        </div>
+      </div>
+
+      <!-- 儲存成功提示吐司訊息 -->
+      <div id="saveToast" class="hidden mb-2 p-2 rounded-lg bg-emerald-950/80 border border-emerald-600/60 text-emerald-300 text-xs flex items-center justify-between transition-all">
+        <span id="saveToastMsg">✓ 缺席角色名單已成功儲存！下次重整仍會保留。</span>
+      </div>
+
+      <!-- 12 位角色宮格 -->
+      <div id="roleGrid" class="grid grid-cols-2 gap-2.5 mb-4">
+        <!-- 由 JS 動態生成 -->
+      </div>
+
+      <!-- 缺席速報卡 -->
+      <div class="bg-theme-card border border-theme-border rounded-xl p-3.5 shadow-md">
+        <div class="flex items-center justify-between text-xs mb-1.5">
+          <span class="text-gray-400">當前統計狀態</span>
+          <span id="playerCalcStats" class="font-bold text-theme-gold">在場 12 人（滿人模式）</span>
+        </div>
+        <div class="text-xs text-gray-300 flex items-start gap-1.5">
+          <span class="shrink-0 text-red-400 font-medium">缺席名單：</span>
+          <span id="removedRoleSummary" class="text-red-300 font-bold break-all">無（全都在場）</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 2: 線索卡移除 ==================== -->
+    <section id="view-tab2" class="tab-view p-4 hidden">
+      <div class="mb-3">
+        <h2 class="text-sm font-bold text-gray-200">線索卡移除對照表</h2>
+        <p class="text-xs text-gray-400">請主持人於開盤或各搜查輪次前，抽離下列卡牌：</p>
+      </div>
+
+      <!-- 一搜卡 -->
+      <div class="bg-theme-card border border-theme-border rounded-xl p-3.5 mb-3 shadow-md">
+        <div class="flex items-center justify-between pb-2 border-b border-theme-border mb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">一搜</span>
+            <span class="text-xs font-semibold text-gray-200">卡牌區間（1～24）</span>
+          </div>
+          <span id="badge-search1" class="text-xs text-amber-400 font-mono font-bold">需抽出 0 張</span>
+        </div>
+        <div id="list-search1" class="flex flex-wrap gap-1.5">
+          <span class="text-xs text-gray-500 italic py-1">無需移除任何卡牌</span>
+        </div>
+      </div>
+
+      <!-- 二搜卡 -->
+      <div class="bg-theme-card border border-theme-border rounded-xl p-3.5 mb-3 shadow-md">
+        <div class="flex items-center justify-between pb-2 border-b border-theme-border mb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">二搜</span>
+            <span class="text-xs font-semibold text-gray-200">卡牌區間（30, 37～48）</span>
+          </div>
+          <span id="badge-search2" class="text-xs text-sky-400 font-mono font-bold">需抽出 0 張</span>
+        </div>
+        <div id="list-search2" class="flex flex-wrap gap-1.5">
+          <span class="text-xs text-gray-500 italic py-1">無需移除任何卡牌</span>
+        </div>
+      </div>
+
+      <!-- 三搜卡 -->
+      <div class="bg-theme-card border border-theme-border rounded-xl p-3.5 mb-3 shadow-md">
+        <div class="flex items-center justify-between pb-2 border-b border-theme-border mb-2.5">
+          <div class="flex items-center gap-2">
+            <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">三搜</span>
+            <span class="text-xs font-semibold text-gray-200">卡牌區間（49～60）</span>
+          </div>
+          <span id="badge-search3" class="text-xs text-purple-400 font-mono font-bold">需抽出 0 張</span>
+        </div>
+        <div id="list-search3" class="flex flex-wrap gap-1.5">
+          <span class="text-xs text-gray-500 italic py-1">無需移除任何卡牌</span>
+        </div>
+      </div>
+
+      <!-- 提示小貼士 -->
+      <div class="bg-theme-surface/60 rounded-lg p-2.5 text-[11px] text-gray-400 leading-relaxed border border-theme-border/50">
+        💡 註：全滿卡牌為 1～60（無 25～29 與 31～36，共 49 張卡）。區政務委員專屬卡包含 30 號密道地圖（歸於二搜）。
+      </div>
+    </section>
+
+    <!-- ==================== TAB 3: 劇本台詞 ==================== -->
+    <section id="view-tab3" class="tab-view p-4 hidden">
+      <div class="mb-3 flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-bold text-gray-200">壽宴開場 · 主持人劇本</h2>
+          <p class="text-xs text-gray-400">上下滑動瀏覽 · 支援自由反白複製</p>
+        </div>
+        <div class="flex items-center gap-1.5 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-1 rounded border border-amber-500/30">
+          <span class="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+          橘色框＝GM 代演
+        </div>
+      </div>
+
+      <!-- 劇本內容區塊 -->
+      <div id="scriptContentList" class="space-y-2.5 user-select-text">
+        <!-- 由 JS 渲染 -->
+      </div>
+    </section>
+
+    <!-- ==================== TAB 4: 事件與兇手 ==================== -->
+    <section id="view-tab4" class="tab-view p-4 hidden">
+      <!-- 最終真兇置頂大看板 -->
+      <div class="bg-gradient-to-br from-theme-crimsonBg via-theme-card to-theme-base border-2 border-theme-crimson rounded-2xl p-4 mb-4 shadow-xl text-center relative overflow-hidden">
+        <div class="absolute -right-6 -bottom-6 text-7xl text-red-500/10 font-black pointer-events-none">KILLER</div>
+        <span class="inline-block text-[11px] tracking-widest text-red-400 font-bold px-2 py-0.5 rounded-full bg-red-950/70 border border-red-800 mb-1.5">
+          FINAL VERDICT · 最終真兇判定
+        </span>
+        <h2 id="finalVerdictTitle" class="text-lg font-black text-white tracking-wide mt-1 leading-snug">
+          計算中...
+        </h2>
+        <p id="finalVerdictDetail" class="text-xs text-gray-300 mt-2 font-mono">
+          -
+        </p>
+      </div>
+
+      <!-- 事件判定明細清單 -->
+      <div class="mb-2 flex items-center justify-between">
+        <h3 class="text-xs font-bold text-gray-300">在場角色發生事件（依時間優先順序）</h3>
+        <span id="filteredEventCountBadge" class="text-[11px] text-gray-400">僅顯示在場事件</span>
+      </div>
+
+      <div id="eventsContainer" class="space-y-2 font-sans">
+        <!-- 由 JS 渲染 -->
+      </div>
+    </section>
+
+    <!-- ==================== TAB 5: 結局劇本 ==================== -->
+    <section id="view-tab5" class="tab-view p-4 hidden">
+      <div class="mb-3">
+        <h2 class="text-sm font-bold text-gray-200">結局判定與劇本朗讀</h2>
+        <p class="text-xs text-gray-400">請根據最終投票結果選擇對應結局：</p>
+      </div>
+
+      <!-- 動態選項按鈕區 -->
+      <div id="endingBtnGroup" class="space-y-2.5 mb-4">
+        <!-- 由 JS 動態生成選項按鈕 -->
+      </div>
+
+      <!-- 結局內文展示區 -->
+      <div id="endingViewBox" class="bg-theme-card border border-theme-border rounded-xl p-4 user-select-text shadow-lg">
+        <div class="text-center text-xs text-gray-400 py-6">
+          請點選上方任一結局選項以展開劇本
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 底部固定頁籤選單 (Tab Navigation) -->
+  <nav class="fixed bottom-0 left-0 right-0 z-50 bg-theme-base/95 backdrop-blur-md border-t border-theme-border shadow-2xl">
+    <div class="max-w-lg mx-auto flex items-center justify-around px-1 pt-2 bottom-nav-safe">
+      <button onclick="switchTab(1)" id="tab-btn-1" class="tab-nav-btn flex-1 flex flex-col items-center justify-center gap-1 py-1 text-theme-gold font-bold transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+        <span class="text-[10px]">角色缺席</span>
+      </button>
+
+      <button onclick="switchTab(2)" id="tab-btn-2" class="tab-nav-btn flex-1 flex flex-col items-center justify-center gap-1 py-1 text-gray-400 transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+        <span class="text-[10px]">線索移除</span>
+      </button>
+
+      <button onclick="switchTab(3)" id="tab-btn-3" class="tab-nav-btn flex-1 flex flex-col items-center justify-center gap-1 py-1 text-gray-400 transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+        <span class="text-[10px]">劇本台詞</span>
+      </button>
+
+      <button onclick="switchTab(4)" id="tab-btn-4" class="tab-nav-btn flex-1 flex flex-col items-center justify-center gap-1 py-1 text-gray-400 transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+        <span class="text-[10px]">真兇推演</span>
+      </button>
+
+      <button onclick="switchTab(5)" id="tab-btn-5" class="tab-nav-btn flex-1 flex flex-col items-center justify-center gap-1 py-1 text-gray-400 transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9"></path></svg>
+        <span class="text-[10px]">結局劇本</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ==================== 核心邏輯 JavaScript ==================== -->
+  <script>
+    // 12 位角色與線索卡配置 (num: 1~12 方便透過網址 ?remove=1,5,7 控制)
+    const ROLES_DATA = [
+      { num: 1,  id: 'huai',  name: '淮秘書',   realName: '淮孩子', clues: [1, 13, 37, 49] },
+      { num: 2,  id: 'ni',    name: '倪醫師',   realName: '倪毫丑', clues: [2, 14, 38, 50] },
+      { num: 3,  id: 'sa',    name: '薩前隨扈', realName: '薩尚寅', clues: [3, 15, 39, 51] },
+      { num: 4,  id: 'you',   name: '尤長工',   realName: '尤卯秉', clues: [4, 16, 40, 52] },
+      { num: 5,  id: 'chen',  name: '辰老將軍', realName: '辰煌孔', clues: [5, 17, 41, 53] },
+      { num: 6,  id: 'ou',    name: '區政務委員', realName: '歐四隨', clues: [6, 18, 30, 42, 54] },
+      { num: 7,  id: 'sui',   name: '隋總管',   realName: '隋午礁', clues: [7, 19, 43, 55] },
+      { num: 8,  id: 'h_fu',  name: '郝夫人',   realName: '郝胃道', clues: [8, 20, 44, 56] },
+      { num: 9,  id: 'h_nv',  name: '郝女士',   realName: '郝申茵', clues: [9, 21, 45, 57] },
+      { num: 10, id: 'mei',   name: '梅副分局長', realName: '梅酉綽', clues: [10, 22, 46, 58] },
+      { num: 11, id: 'zhen',  name: '甄僕人',   realName: '甄需胃', clues: [11, 23, 47, 59] },
+      { num: 12, id: 'hai',   name: '亥大廚',   realName: '亥斯臥', clues: [12, 24, 48, 60] }
+    ];
+
+    // 全死結局墓誌銘
+    const EPITAPHS_DEAD = {
+      '淮秘書': '身為蔣家秘書多年，奈何同父不同命，或許打從出生，就是一個錯誤吧，害慘了母親，也害慘了自己......',
+      '倪醫師': '從醫多年，從未有過一絲害人之心，奈何人無害虎心，虎有傷人意，怪只怪進了這棟房，當了這個醫生吧。',
+      '薩前隨扈': '從一開始，就是他們手上的刀，手往哪指，刀就往哪去。卻沒想過舔了一輩子的刀口，自己卻被刀子給抹了，早知如此，當初就該一刀給他們痛快，不是嗎？',
+      '尤長工': '在這個家裡付出了一輩子，卻遇到這麼不分青紅皂白的東家，不受寬待也都忍了。唉，這最後關頭，只可惜沒能跟他說出那一句，終究說不出口的話......',
+      '辰老將軍': '在老蔣時代，也是備受景仰的存在，人老了，就被看輕了......要不是那些年輕小伙不夠擔當，還需要這些老人撐著嗎！還有那老婦，真是昏庸至極啊！',
+      '區政務委員': '又何嘗願意當一條哈巴狗呢？只是不想讓父母失望，不想讓總統失望啊......可不曾想，做得再好，也沒人正眼看自己一眼。',
+      '隋總管': '為了這蔣家，付出了大半輩子，如今，也隨老夫人去了，這小蔣總統，自個兒多珍重吧，唉......',
+      '郝夫人': '一手打造了郝家今日光景，誰說女子不如男。但做的再大，也抵不過上頭的一句話，人要你死，不得不死。',
+      '郝女士': '這參加一個宴會好好的，怎麼就回不去了呢？唉，這樣走了，或許也能少操點心吧，寶芙啊，希望你能平安抵達舊金山，好好完成我們沒能完成的夢吧......',
+      '梅副分局長': '這高不成低不就的地位，如果沒有教主的開導，或許這一輩子都鬱鬱寡歡吧。至少，這該死的人死了，而不該死的也死了......',
+      '甄僕人': '想了想，活著的時候總得有些追求，其他人汲汲營營於名利，怎麼有握在手上的真金白銀來的踏實呢？不過最後關頭，這真金白銀也買不了自己的命啊......',
+      '亥大廚': '雖然查清楚了爸爸當年的事情，也知道了離開的無奈。但到最後好像還沒有煮過一道菜給爸爸吃呢？但看來，這機會已經不存在了吧......'
+    };
+
+    // 好結局各人後續
+    const EPITAPHS_GOOD = {
+      '淮秘書': '蔣夫人逝世後，蔣諦總統仍致力精誠於國事，夙夜匪懈。而身邊總隨侍著一位能幹的秘書，這人雖然沒有一官半職，卻是蔣諦總統最不可或缺的存在，形影不離。或許這真正的一人之下，萬人之上，不是來自於任何頭銜，而是看能有什麼本事！',
+      '倪醫師': '幾年後，我國在糖尿病與老年失智症的醫療研究上領先各國，這其中不可忽視的名字，是那位在蔣家服務多年的御醫。也因此，蔣總統賞賜倪醫師一座古色古香的木造廊房，供其居住與開診，澤惠廣大的社會民眾，雖然上門的病患，常常仍舊是那些達官顯貴們。',
+      '薩前隨扈': '近幾年，我國打擊黑幫分子不遺餘力。薩前隨扈雖引退多年，仍不忘協助國家掃蕩不法，更能提攜後輩有為青年，培養出不少優秀的在地人才，進入議會及國會，替在地的民眾表達訴求，為民喉舌，擺平地方大小事。各地紅白事，都可以看到其子弟兵的身影。',
+      '尤長工': '這倪醫師的宅邸，是曾任職蔣家的工藝大師－尤大師所建。而尤大師似乎也把倪醫師的診所，當成了自己的展覽館，眾多工藝品擺設在其間，連後方的空置房間，也似乎成了尤大師的工作間。診所的護理師，還時常看到尤大師與倪醫師秉燭長談的身影呢～',
+      '辰老將軍': '長年致力於前線守衛的辰老將軍，提出了不少精實邊境的建議，讓國家軍力富強壯盛。也因為這長年的精忠報效，辰老將軍以四星上將的軍階榮退，蔣諦總統還在當日，特頒青天白日勳章，彰其功勛。',
+      '區政務委員': '蔣夫人逝世後，在蔣諦總統身邊深耕多年的區政委，喔不，現在是區行政院長，為國家提出了不少長遠的建設方案，使得我國在交通、工業、科技、經濟等領域，有良好的基礎發展，更成就了我國亞洲四小龍之首的威名。',
+      '隋總管': '雖然蔣夫人逝世，讓隋總管很是難過。但不久後，蔣諦總統成婚，蔣家下一代的繼承人也出生了。已經服務蔣家兩代的隋總管，讓蔣諦總統放心的把下一代交托給隋總管養育，而隋總管對待蔣家下一代，如親孫子似的看護著，讓人羨慕這爺孫般的好感情。',
+      '郝夫人': '蔣夫人的逝世，讓郝夫人難過好一陣子。但想起蔣夫人對全國婦女的貢獻，郝夫人聯合名門辜家，接手蔣夫人創辦的婦女組織，繼承蔣夫人無私付出的胸懷，持續為我國女性推動性別平等工作，如同工同酬、生理假、育嬰假等等，成為全國女性的模範。',
+      '郝女士': '虎母無犬女，郝女士一家致力於我國生醫科技的發展。在蔣諦總統的前瞻生醫政策的大力支持下，與丈夫赫葆芙創立世界聞名的生醫品牌，在家用民生，清潔，健康保健等，都有卓越的成效。成為舉世聞名的跨國企業，更是國人愛用品牌。',
+      '梅副分局長': '梅副分局長熟知警政系統，更了解地方發展的治安缺陷。提出了一套完善的警政系統，使得全國上下警民治安煥然一新。而梅副分局長長年篤信宗教，時常提出發人省思的話語，淨化國民的暴戾之氣。因此蔣諦總統特任為國安局秘書長，統領國家上下安全。',
+      '甄僕人': '俗話說，宰相門前三品官，更何況是總統府邸。隋老總管年事已高，身為其晚輩的甄僕人接任蔣家大總管一職，輔佐著蔣諦總統宅邸內外事，更因其開朗的性格，讓不少達官顯貴到總統府邸作客時，時常笑語連連。當然，這甄總管，每天看到的第一面，眼睛都是笑得瞇了起來。',
+      '亥大廚': '蔣夫人雖然在其壽宴溘(ㄎㄜˋ)然長逝，但壽宴上的每道菜堪稱國宴典範，而蔣諦總統英明睿智的眼光下，早就知曉亥大廚的父親正是蔣家前御廚，更為其洗刷多年汙名，重新延聘回蔣家任職，父子兩人精研各式菜系，中西合併，成就了繼滿漢全席後的，著名國宴宴席標準。'
+    };
+
+    // 狀態集：紀錄「被移除 / 缺席」的角色名稱
+    const removedRoles = new Set();
+    const STORAGE_KEY = 'shouyan_removed_roles_github';
+    let currentKillerName = '未定';
+    let isSpecialEndingEligible = false;
+    let selectedEndingType = null;
+
+    // 劇本台詞資料庫（GM 固定角色如「蔣諦」、「眾人」不計入玩家扮演標註）
+    const SCRIPT_LINES = [
+      { type: 'narration', text: '眾人在侍女們的引導下，移動到了宴會廳。' },
+      { type: 'dialogue', speaker: '蔣諦', isGMFixed: true, text: '諸位，晚宴即將開始，在等待我母親到來的這段時間，讓我們先高舉酒杯（示意玩家拿杯）敬蔣夫人生辰愉快。' },
+      { type: 'dialogue', speaker: '眾人', isGMFixed: true, text: '敬蔣夫人生辰愉快。' },
+      { type: 'dialogue', speaker: '蔣諦', isGMFixed: true, text: '奇怪？怎麼母親還不見人影？想來是緊張了，下人們也不好進門催促，還是我去請母親吧！諸位請隨意。隋卿、淮卿，現場就交給你們了。' },
+      { type: 'narration', text: '蔣總統放下手上的酒杯離開宴會廳，淮秘書與隋總管站了起來。' },
+      { type: 'dialogue', speaker: '淮秘書', text: '今日與會的貴客，都是蔣夫人的舊識。希望今晚的宴會，能讓各位盡興，也預祝今晚的壽宴圓滿。' },
+      { type: 'dialogue', speaker: '隋總管', text: '晚宴的餐點茶飲，都是蔣夫人最欣賞的主廚－亥大廚為各位準備的。若在場有任何需要，還請不吝告知，讓在下能為各位服務。隋總管右手橫放胸前，與在場眾人行禮。' },
+      { type: 'dialogue', speaker: '郝夫人', text: '這亥大廚可是我郝家引薦給蔣夫人的呢！我認可的廚藝，那當然非常人能及。說來懷念，亥大廚的手藝我也已經數年未能好好品嘗品嘗。' },
+      { type: 'dialogue', speaker: '亥大廚', text: '郝夫人過獎了！要不是郝夫人當年大力引薦，小的又哪能有這種機緣，在第一家庭服務呢！還請各位品嘗這西式小點，這可是我依照蔣夫人的喜好，調整精進而成，希望各位喜歡。' },
+      { type: 'dialogue', speaker: '郝女士', text: '這味道之精緻，說多了都顯累贅。就單說比起過往，增添了歲月的層次。可說是把那些國內外名店比下去呢！今天各位可是有口福了！' },
+      { type: 'dialogue', speaker: '辰老將軍', text: '我年紀大了，吃不得這種甜物，老人家得多注意自己的身體狀況。這身體比不得當年，拚不過在場的年輕小夥子啦！（擺了擺手，敬謝不敏的樣子）' },
+      { type: 'dialogue', speaker: '薩前隨扈', text: '咳，飯前甜點確實是點到即可，各位愛吃的可以多吃點啊！我就等著吃大菜了，我下午路過廚房時，那香味可讓我差點收不住口水。在外頭的這些年啊！難得才能吃上這等山珍海味。（略不自然地縮回伸向桌邊的手，順了順頭髮）' },
+      { type: 'dialogue', speaker: '甄僕人', text: '是啊！每次亥大廚做菜時，滿屋子的香味，都饞得我腹中唱戲呢！說到這個，今天這些菜可都是……' },
+      { type: 'narration', text: '甄僕人話還沒說完，立刻被隋總管打斷。' },
+      { type: 'dialogue', speaker: '隋總管', text: '誰讓你打擾貴客們的對話了？沒看到客人們的酒杯都空了嗎？還不趕緊去續上？' },
+      { type: 'dialogue', speaker: '區政務委員', text: '隋總管別太嚴厲了，這僕人能說善道，挺是活絡氣氛呢！想來也是為了避免氣氛太沉悶，來逗逗大家。畢竟在場眾人，多少還是有點生疏。' },
+      { type: 'dialogue', speaker: '梅副分局長', text: '此話有理，在場我也就只與身為蔣總統左右手的兩位曾有交集。等會兒還得跟所有人熟悉熟悉，望各位不嫌棄。未來還需仰賴諸位，多多關照。（梅副分局長默禱完，放下雙手，向在場眾人拱了拱手）' },
+      { type: 'narration', text: '尤長工偷偷拿著一盤甜點，跟倪醫師挨在一起，正聊些什麼。' },
+      { type: 'dialogue', speaker: '尤長工', text: '倪醫師快嚐嚐，難得有機會可以吃到這等好料。平常都是老……夫人專屬的，我幫您多拿了點過來。' },
+      { type: 'narration', text: '尤長工將盤子推向倪醫師，倪醫師拿起一個甜點往嘴裡放了進去。' },
+      { type: 'dialogue', speaker: '倪醫師', text: '甜而不膩，香酥可口，亥大廚的手藝果真不錯！只是考慮到蔣夫人糖尿病問題，還是得避免攝取過多這種精緻糖，不然血糖可就難控制了。' },
+      { type: 'dialogue', speaker: '尤長工', text: '都這種時候了，就不要再想著蔣夫人啦！而且她也都沒在聽你說啊！多嘴只會找罵挨。' },
+      { type: 'dialogue', speaker: '淮秘書', text: '今日各位嘉賓，想來都還有些陌生，不如請還在場上的賓客，稍微跟大家做個介紹？' }
+    ];
+
+    // 檢查某角色是否「在場」（未被移除）
+    function isRolePresent(name) {
+      return !removedRoles.has(name);
+    }
+
+    // 構建 Tab 1 角色列表按鈕
+    function buildRoleGrid() {
+      const container = document.getElementById('roleGrid');
+      container.innerHTML = '';
+
+      ROLES_DATA.forEach(role => {
+        const isRemoved = removedRoles.has(role.name);
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.onclick = () => toggleRole(role.name);
+        card.className = `p-3 rounded-xl border flex items-center justify-between text-left transition-all active:scale-95 ${
+          isRemoved
+            ? 'bg-theme-crimsonBg/70 border-red-800 text-gray-300'
+            : 'bg-theme-card border-theme-border text-white hover:border-gray-500'
+        }`;
+
+        card.innerHTML = `
+          <div>
+            <div class="text-xs font-bold ${isRemoved ? 'text-red-400 line-through opacity-75' : 'text-gray-100'}">
+              <span class="font-mono text-gray-500 mr-1">${role.num}.</span>${role.name}
+            </div>
+            <div class="text-[10px] text-gray-400 mt-0.5">${isRemoved ? '缺席中' : '玩家在場'}</div>
+          </div>
+          <span class="text-xs px-2 py-0.5 rounded-md font-mono ${
+            isRemoved 
+              ? 'bg-red-900/60 text-red-200 border border-red-700/60' 
+              : 'bg-emerald-950/60 text-emerald-300 border border-emerald-700/60'
+          }">
+            ${isRemoved ? '移除' : '在席'}
+          </span>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // 切換角色缺席狀態
+    function toggleRole(roleName) {
+      if (removedRoles.has(roleName)) {
+        removedRoles.delete(roleName);
+      } else {
+        removedRoles.add(roleName);
+      }
+      refreshState();
+      // 同步更新網址 hash，例如 #remove=1,5,7
+      updateUrlParam();
+      // 自動背景保存至 localStorage
+      saveRolesToLocal(false);
+    }
+
+    // 將當前缺席狀態更新到網址列（便於複製帶有參數的連結）
+    function updateUrlParam() {
+      try {
+        const nums = [];
+        ROLES_DATA.forEach(r => {
+          if (removedRoles.has(r.name)) nums.push(r.num);
+        });
+        if (nums.length > 0) {
+          history.replaceState(null, '', `#remove=${nums.join(',')}`);
+        } else {
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      } catch (e) {
+        // 忽略歷史記錄寫入限制
+      }
+    }
+
+    // 解析網址上的 remove 參數（支援 ?remove=1,5,7 或 #remove=1,5,7）
+    function loadFromUrlParam() {
+      try {
+        let paramStr = '';
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.has('remove')) {
+          paramStr = searchParams.get('remove');
+        } else if (window.location.hash.includes('remove=')) {
+          const match = window.location.hash.match(/remove=([\d,]+)/);
+          if (match) paramStr = match[1];
+        }
+
+        if (paramStr) {
+          const nums = paramStr.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+          if (nums.length > 0) {
+            removedRoles.clear();
+            nums.forEach(n => {
+              const r = ROLES_DATA.find(item => item.num === n);
+              if (r) removedRoles.add(r.name);
+            });
+            return true;
+          }
+        }
+      } catch (e) {
+        console.warn('網址參數讀取失敗:', e);
+      }
+      return false;
+    }
+
+    // 儲存至本機 LocalStorage
+    function saveRolesToLocal(showFeedback = true) {
+      try {
+        const arr = Array.from(removedRoles);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+
+        if (showFeedback) {
+          showToast(`✓ 已成功儲存名單（共缺席 ${arr.length} 人）！`);
+        }
+      } catch (e) {
+        console.error('儲存失敗:', e);
+        if (showFeedback) {
+          showToast('⚠️ 儲存失敗，請檢查瀏覽器安全性設定。');
+        }
+      }
+    }
+
+    // 從 LocalStorage 載入
+    function loadRolesFromLocal() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const arr = JSON.parse(saved);
+          if (Array.isArray(arr)) {
+            removedRoles.clear();
+            arr.forEach(name => removedRoles.add(name));
+            return true;
+          }
+        }
+      } catch (e) {
+        console.error('讀取儲存失敗:', e);
+      }
+      return false;
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('saveToast');
+      const msgEl = document.getElementById('saveToastMsg');
+      if (toast && msgEl) {
+        msgEl.textContent = msg;
+        toast.classList.remove('hidden');
+        clearTimeout(window.__toastTimer);
+        window.__toastTimer = setTimeout(() => {
+          toast.classList.add('hidden');
+        }, 2200);
+      }
+    }
+
+    // 重置全員在場
+    function resetAllRoles() {
+      removedRoles.clear();
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      } catch (e) {}
+      refreshState();
+      showToast('已重置全員在場並清除快取紀錄。');
+    }
+
+    // 重新計算並刷新所有畫面
+    function refreshState() {
+      buildRoleGrid();
+
+      const removedCount = removedRoles.size;
+      const presentCount = 12 - removedCount;
+
+      // 頂部狀態徽章
+      document.getElementById('quickStatusBadge').textContent = `在場: ${presentCount} / 缺席: ${removedCount}`;
+
+      // Tab 1 統計總結
+      const calcStatsEl = document.getElementById('playerCalcStats');
+      if (presentCount >= 7 && presentCount <= 10) {
+        calcStatsEl.innerHTML = `<span class="text-emerald-400 font-bold">${presentCount} 人局（符合標準人數）</span>`;
+      } else if (presentCount === 12) {
+        calcStatsEl.innerHTML = `<span class="text-theme-gold font-bold">12 人滿員狀態</span>`;
+      } else {
+        calcStatsEl.innerHTML = `<span class="text-amber-400 font-bold">${presentCount} 人局（特殊人數）</span>`;
+      }
+
+      const summaryList = Array.from(removedRoles);
+      document.getElementById('removedRoleSummary').textContent = summaryList.length > 0 ? summaryList.join('、') : '無（全都在場）';
+
+      // 刷新 Tab 2: 線索卡
+      updateCluesView();
+
+      // 刷新 Tab 3: 劇本台詞代演標註
+      updateScriptView();
+
+      // 刷新 Tab 4: 事件與真兇
+      updateVerdictView();
+
+      // 刷新 Tab 5: 結局選項與劇本
+      updateEndingsView();
+    }
+
+    // 更新 Tab 2: 線索卡清單
+    function updateCluesView() {
+      let cardsToRemove = [];
+      removedRoles.forEach(roleName => {
+        const item = ROLES_DATA.find(r => r.name === roleName);
+        if (item) cardsToRemove.push(...item.clues);
+      });
+      cardsToRemove.sort((a, b) => a - b);
+
+      // 一搜: 1~24
+      const search1 = cardsToRemove.filter(n => n >= 1 && n <= 24);
+      // 二搜: 30, 37~48
+      const search2 = cardsToRemove.filter(n => (n >= 37 && n <= 48) || n === 30);
+      // 三搜: 49~60
+      const search3 = cardsToRemove.filter(n => n >= 49 && n <= 60);
+
+      renderClueCategory('search1', search1, 'bg-amber-950/40 text-amber-300 border-amber-800/50');
+      renderClueCategory('search2', search2, 'bg-sky-950/40 text-sky-300 border-sky-800/50');
+      renderClueCategory('search3', search3, 'bg-purple-950/40 text-purple-300 border-purple-800/50');
+    }
+
+    function renderClueCategory(key, cards, styleClasses) {
+      const badge = document.getElementById(`badge-${key}`);
+      const list = document.getElementById(`list-${key}`);
+
+      badge.textContent = `需抽出 ${cards.length} 張`;
+
+      if (cards.length === 0) {
+        list.innerHTML = `<span class="text-xs text-gray-500 italic py-1">無需移除任何卡牌</span>`;
+      } else {
+        list.innerHTML = cards.map(c => `
+          <span class="inline-flex items-center px-2.5 py-1 rounded text-xs font-mono font-bold border ${styleClasses}">
+            第 ${c} 號
+          </span>
+        `).join('');
+      }
+    }
+
+    // 更新 Tab 3: 劇本對話渲染
+    function updateScriptView() {
+      const container = document.getElementById('scriptContentList');
+      container.innerHTML = '';
+
+      SCRIPT_LINES.forEach(line => {
+        if (line.type === 'narration') {
+          const p = document.createElement('div');
+          p.className = 'py-1 px-3 text-xs text-gray-400 italic bg-theme-surface/30 rounded border-l-2 border-gray-600';
+          p.textContent = line.text;
+          container.appendChild(p);
+        } else {
+          // 對話
+          const isGM = line.isGMFixed === true;
+          const isRoleAbsent = removedRoles.has(line.speaker);
+          const needsGMReplace = !isGM && isRoleAbsent;
+
+          const box = document.createElement('div');
+          box.className = `p-3 rounded-xl border transition-all ${
+            needsGMReplace 
+              ? 'bg-theme-alertBg border-theme-alertAmber/70 ring-1 ring-amber-500/30' 
+              : 'bg-theme-card border-theme-border text-gray-200'
+          }`;
+
+          box.innerHTML = `
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-bold ${needsGMReplace ? 'text-amber-400' : (isGM ? 'text-theme-gold' : 'text-gray-300')}">
+                ${line.speaker}
+              </span>
+              ${needsGMReplace ? `
+                <span class="text-[10px] bg-amber-600 text-white font-bold px-1.5 py-0.5 rounded shadow">
+                  主持人 GM 代讀
+                </span>
+              ` : ''}
+              ${isGM ? `
+                <span class="text-[10px] bg-theme-surface text-gray-400 px-1.5 py-0.5 rounded border border-theme-border">
+                  NPC 固定
+                </span>
+              ` : ''}
+            </div>
+            <div class="text-xs leading-relaxed ${needsGMReplace ? 'text-amber-100 font-medium' : 'text-gray-300'}">
+              ${line.text}
+            </div>
+          `;
+          container.appendChild(box);
+        }
+      });
+    }
+
+    // 核心事件判定（完全對應 Excel 公式與優先級）
+    function updateVerdictView() {
+      const events = [
+        {
+          id: 1,
+          time: '15:00',
+          mainActor: '薩前隨扈',
+          title: '15：00 （薩前隨扈）有倪醫生時才判定，刀殺成功 （右位心）',
+          eval: () => isRolePresent('倪醫師') && isRolePresent('薩前隨扈'),
+          desc: '倪醫師在場可診斷右位心；薩前隨扈刀刺右胸命中致死。'
+        },
+        {
+          id: 2,
+          time: '16:00',
+          mainActor: '梅副分局長',
+          title: '16：00 （梅副分局長）塔崩中毒致死',
+          eval: () => isRolePresent('梅副分局長') && !isRolePresent('區政務委員') && !isRolePresent('隋總管'),
+          desc: '區政務委員不在且隋總管不在，香水塔崩神經毒發作。'
+        },
+        {
+          id: 3,
+          time: '16:00',
+          mainActor: '辰老將軍',
+          title: '16：00 （辰老將軍）窗外看夫人坐椅子上，遙控啟動電椅電死',
+          eval: () => isRolePresent('辰老將軍') && !isRolePresent('區政務委員') && !isRolePresent('隋總管'),
+          desc: '區政務委員不在且隋總管不在，電椅機關成功通電。'
+        },
+        {
+          id: 4,
+          time: '16:30',
+          mainActor: '倪醫師',
+          title: '16：30 （倪醫師）低血糖致死',
+          eval: () => isRolePresent('倪醫師') && !isRolePresent('郝夫人') && !isRolePresent('郝女士'),
+          desc: '郝家雙女皆不在場，胰島素過量引發致命性低血糖。'
+        },
+        {
+          id: 5,
+          time: '16:30',
+          mainActor: '郝夫人',
+          title: '16：30 （郝夫人）氰化鈉中毒致死',
+          eval: () => isRolePresent('郝夫人') && !isRolePresent('郝女士'),
+          desc: '郝夫人獨在（郝女士不在），氰化物毒茶飲致死。'
+        },
+        {
+          id: 6,
+          time: '16:30',
+          mainActor: '郝女士',
+          title: '16：30 （郝女士）亞硝酸鈉中毒致死',
+          eval: () => isRolePresent('郝女士') && !isRolePresent('郝夫人'),
+          desc: '郝女士獨在（郝夫人不在），亞硝酸鈉點心致死。'
+        },
+        {
+          id: 7,
+          time: '16:50',
+          mainActor: '淮秘書',
+          title: '16：50 （淮秘書）背後勒死夫人，沒有看到正面其他狀態，夫人被繩勒時無反抗',
+          eval: () => isRolePresent('淮秘書'),
+          desc: '淮秘書進入夫人房中，從背後以細線勒斃。'
+        },
+        {
+          id: 8,
+          time: '17:00',
+          mainActor: '薩前隨扈',
+          title: '17：00 （薩前隨扈）刀殺成功，夫人左位心，失血過多致死',
+          eval: () => isRolePresent('薩前隨扈'),
+          desc: '倪醫師不在無從得知右位心，普通左胸刺傷失血致死。'
+        },
+        {
+          id: 9,
+          time: '17:00',
+          mainActor: '區政務委員',
+          title: '17：00 （區政務委員）夫人被蜜蜂螫，過敏性休克',
+          eval: () => isRolePresent('區政務委員') && !isRolePresent('尤長工') && !isRolePresent('亥大廚'),
+          desc: '尤長工與亥大廚皆缺席，花園蜂螫引發嚴重過敏性休克。'
+        },
+        {
+          id: 10,
+          time: '17:00',
+          mainActor: '亥大廚',
+          title: '17：00 （亥大廚）有區政務委員時才判定，夫人開密室門瞬間二氧化碳窒息',
+          eval: () => isRolePresent('亥大廚') && isRolePresent('區政務委員') && !isRolePresent('尤長工'),
+          desc: '乾冰氣化積聚於地道，開密道門時高濃度二氧化碳窒息。'
+        },
+        {
+          id: 11,
+          time: '17:00',
+          mainActor: '尤長工',
+          title: '17：00 （尤長工）夫人接觸書房門把生漆過敏，去醫務室尋找過敏藥物，誤用盤尼西林導致過敏性休克',
+          eval: () => isRolePresent('尤長工'),
+          desc: '書房門把生漆過敏，自行誤打針筒盤尼西林休克死亡。'
+        },
+        {
+          id: 12,
+          time: '18:00',
+          mainActors: ['甄僕人', '隋總管'],
+          title: '18：00 （甄僕人+隋總管）意外事件。打開電閘，短路高熱溶斷基座，吊燈墜落砸死',
+          eval: () => isRolePresent('甄僕人') && isRolePresent('隋總管'),
+          desc: '合力重啟電閘引發線路短路，大型水晶吊燈基座融斷砸落。'
+        },
+        {
+          id: 13,
+          time: '終局',
+          isNatural: true,
+          title: '猛爆性肝炎，自然疾病死亡',
+          eval: () => {
+            // 自然死亡條件：只要前面 1~12 的事件皆未成立，即自動觸發
+            return !events.slice(0, 12).some(ev => ev.eval());
+          },
+          desc: '無人下手成功或機緣巧合避開所有行兇，自身肝功能衰竭自然死亡。'
+        }
+      ];
+
+      // 篩選：只要主使者/涉及者角色有缺席，就不在推演清單中顯示
+      const visibleEvents = events.filter(ev => {
+        if (ev.isNatural) return true;
+        if (ev.mainActor) {
+          return isRolePresent(ev.mainActor);
+        }
+        if (ev.mainActors) {
+          // 針對雙人事件：需兩位都在場才算「存在角色發生的事件」
+          return ev.mainActors.every(actor => isRolePresent(actor));
+        }
+        return true;
+      });
+
+      // 依時間優先判定真兇
+      let firstKillerEvent = null;
+      for (const ev of events) {
+        if (ev.eval()) {
+          firstKillerEvent = ev;
+          break;
+        }
+      }
+
+      const eventsContainer = document.getElementById('eventsContainer');
+      eventsContainer.innerHTML = '';
+
+      document.getElementById('filteredEventCountBadge').textContent = `顯示 ${visibleEvents.length} 項在場事件`;
+
+      if (visibleEvents.length === 0) {
+        eventsContainer.innerHTML = `
+          <div class="p-4 text-center text-xs text-gray-500 bg-theme-surface/30 rounded-xl border border-theme-border">
+            目前在場角色皆無相關殺人事件記錄。
+          </div>
+        `;
+      } else {
+        visibleEvents.forEach((ev) => {
+          const isTriggered = ev.eval();
+          const isTheKiller = (firstKillerEvent && firstKillerEvent.id === ev.id);
+
+          const card = document.createElement('div');
+          card.className = `p-3 rounded-xl border transition-all text-xs flex items-start gap-2.5 ${
+            isTheKiller
+              ? 'bg-red-950/60 border-red-500 ring-2 ring-red-500/40 text-white shadow-lg'
+              : isTriggered
+                ? 'bg-theme-card border-theme-border text-gray-300'
+                : 'bg-theme-surface/40 border-theme-border/40 text-gray-500'
+          }`;
+
+          card.innerHTML = `
+            <div class="shrink-0 font-mono font-bold mt-0.5 ${isTheKiller ? 'text-red-400' : 'text-gray-500'}">
+              #${ev.id}
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center justify-between gap-1 mb-1">
+                <span class="font-bold ${isTheKiller ? 'text-white text-[13px]' : 'text-gray-200'}">
+                  ${ev.title}
+                </span>
+                <span class="shrink-0 font-mono text-[10px] px-2 py-0.5 rounded-full ${
+                  isTheKiller 
+                    ? 'bg-red-600 text-white font-black' 
+                    : isTriggered 
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800' 
+                      : 'bg-gray-800 text-gray-500 border border-gray-700/60'
+                }">
+                  ${isTheKiller ? '★ 本局真兇' : (isTriggered ? '條件成立(被蓋過)' : '條件未成')}
+                </span>
+              </div>
+              <p class="text-[11px] ${isTheKiller ? 'text-red-200' : 'text-gray-400'}">
+                ${ev.desc}
+              </p>
+            </div>
+          `;
+
+          eventsContainer.appendChild(card);
+        });
+      }
+
+      // 更新置頂大看板
+      const vTitle = document.getElementById('finalVerdictTitle');
+      const vDetail = document.getElementById('finalVerdictDetail');
+
+      if (firstKillerEvent) {
+        vTitle.textContent = firstKillerEvent.title;
+        vDetail.textContent = `判定成立依據：${firstKillerEvent.desc}`;
+        currentKillerName = firstKillerEvent.mainActor || (firstKillerEvent.mainActors ? firstKillerEvent.mainActors[0] : (firstKillerEvent.isNatural ? '自然死亡' : '未定'));
+      } else {
+        vTitle.textContent = '未滿足任何死因條件（所有人相安無事）';
+        vDetail.textContent = '請檢查角色缺席組合。';
+        currentKillerName = '無';
+      }
+
+      // 檢查特殊結局（猛爆性肝炎）條件
+      const specialEvent = events.find(e => e.id === 13);
+      isSpecialEndingEligible = specialEvent ? specialEvent.eval() : false;
+    }
+
+    // 更新 Tab 5: 結局按鈕群
+    function updateEndingsView() {
+      const btnGroup = document.getElementById('endingBtnGroup');
+      if (!btnGroup) return;
+
+      const killer = currentKillerName || '兇手';
+
+      let html = `
+        <button type="button" onclick="renderEnding('killer-win')" class="w-full text-left p-3 rounded-xl border transition-all active:scale-95 flex items-center justify-between ${
+          selectedEndingType === 'killer-win'
+            ? 'bg-amber-950/70 border-amber-500 ring-2 ring-amber-500/40 text-amber-100 shadow-md'
+            : 'bg-theme-card border-theme-border text-gray-200 hover:border-gray-500'
+        }">
+          <span class="text-xs font-bold">【${killer} 不是最高票，${killer} 自己投自己】</span>
+          <span class="text-[11px] px-2 py-0.5 rounded bg-amber-600/30 text-amber-300 border border-amber-600/40 shrink-0 ml-2">兇手獨贏 →</span>
+        </button>
+
+        <button type="button" onclick="renderEnding('all-dead')" class="w-full text-left p-3 rounded-xl border transition-all active:scale-95 flex items-center justify-between ${
+          selectedEndingType === 'all-dead'
+            ? 'bg-red-950/70 border-red-500 ring-2 ring-red-500/40 text-red-100 shadow-md'
+            : 'bg-theme-card border-theme-border text-gray-200 hover:border-gray-500'
+        }">
+          <span class="text-xs font-bold">【${killer} 不是最高票，${killer} 沒投自己】</span>
+          <span class="text-[11px] px-2 py-0.5 rounded bg-red-600/30 text-red-300 border border-red-600/40 shrink-0 ml-2">全死結局 →</span>
+        </button>
+
+        <button type="button" onclick="renderEnding('good')" class="w-full text-left p-3 rounded-xl border transition-all active:scale-95 flex items-center justify-between ${
+          selectedEndingType === 'good'
+            ? 'bg-emerald-950/70 border-emerald-500 ring-2 ring-emerald-500/40 text-emerald-100 shadow-md'
+            : 'bg-theme-card border-theme-border text-gray-200 hover:border-gray-500'
+        }">
+          <span class="text-xs font-bold">【${killer} 的票數最高】</span>
+          <span class="text-[11px] px-2 py-0.5 rounded bg-emerald-600/30 text-emerald-300 border border-emerald-600/40 shrink-0 ml-2">好結局 →</span>
+        </button>
+      `;
+
+      if (isSpecialEndingEligible) {
+        html += `
+          <button type="button" onclick="renderEnding('special')" class="w-full text-left p-3 rounded-xl border transition-all active:scale-95 flex items-center justify-between ${
+            selectedEndingType === 'special'
+              ? 'bg-purple-950/70 border-purple-500 ring-2 ring-purple-500/40 text-purple-100 shadow-md'
+              : 'bg-purple-950/30 border-purple-800 text-purple-200 hover:border-purple-600'
+          }">
+            <span class="text-xs font-bold">【★ 特殊結局：夫人自然死亡】</span>
+            <span class="text-[11px] px-2 py-0.5 rounded bg-purple-600/40 text-purple-300 border border-purple-500 shrink-0 ml-2">揭露真相 →</span>
+          </button>
+        `;
+      }
+
+      btnGroup.innerHTML = html;
+
+      // 如果當前已有選中的結局類型，重新渲染內文以反映名單變化
+      if (selectedEndingType) {
+        renderEnding(selectedEndingType, false);
+      }
+    }
+
+    // 展開結局劇本內文
+    function renderEnding(type, updateUI = true) {
+      selectedEndingType = type;
+      if (updateUI) {
+        updateEndingsView();
+      }
+
+      const box = document.getElementById('endingViewBox');
+      if (!box) return;
+
+      const killer = currentKillerName;
+      const killerObj = ROLES_DATA.find(r => r.name === killer);
+      const killerRealName = killerObj ? killerObj.realName : killer;
+
+      // 取得在場角色清單（依 ROLES_DATA 順序）
+      const presentRoles = ROLES_DATA.filter(r => isRolePresent(r.name)).map(r => r.name);
+
+      let content = '';
+
+      if (type === 'all-dead') {
+        // 【全死結局】移除不在場角色，保留在場所有人的墓誌銘（含兇手）
+        const epitaphsHtml = presentRoles.map(role => `
+          <div class="p-2.5 my-1.5 rounded-lg bg-theme-surface/50 border-l-2 border-red-500 text-xs leading-relaxed text-gray-200">
+            <span class="font-bold text-red-400 mr-1.5">［${role}］</span>${EPITAPHS_DEAD[role] || ''}
+          </div>
+        `).join('');
+
+        content = `
+          <div class="border-b border-theme-border pb-2.5 mb-3">
+            <h3 class="text-sm font-bold text-red-400">【全死結局】</h3>
+            <p class="text-[11px] text-gray-400 mt-0.5">兇手未能自保或票數不足，全員滅口</p>
+          </div>
+
+          <div class="space-y-2 text-xs text-gray-200 leading-relaxed">
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>就是這個人？你們確定？</p>
+            <div class="py-1 px-2.5 rounded bg-red-950/40 border-l-2 border-red-600 text-[11px] text-red-300 font-mono">（掏槍槍斃）［開紅燈］</div>
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>唉～我給了你們這麼久的時間、這麼多次的機會，一個個都辜負我的期望啊，可惜了，我身邊不留無用之人。</p>
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">［拿頭套出布幕］</div>
+            <p><span class="font-bold text-sky-400">隨扈：</span>各位大人，對不住啦。雖然今晚跟各位相處得還算愉快，但總統交辦的事情，我們做下屬的也不好違逆是吧。（把頭套遞給玩家）這就當我給各位最後的體面吧，各位把頭套戴上，這樣路上也比較不害怕啊。</p>
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">［等待眾人戴上頭套後，回房朝外開槍，槍響同時關音檔］</div>
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>只有死人才能永遠嚴守秘密，哈哈哈～</p>
+
+            <div class="py-1 px-2.5 rounded bg-amber-950/40 border-l-2 border-amber-600 text-[11px] text-amber-300 font-mono mt-3">
+              ［切音檔8，關燈，類墓誌銘］（各位可以把頭套拿下來了）
+            </div>
+
+            <div class="my-2 space-y-1">
+              ${epitaphsHtml}
+            </div>
+
+            <div class="py-1 px-2.5 rounded bg-sky-950/40 border-l-2 border-sky-600 text-[11px] text-sky-300 font-mono mt-3">
+              ［切音檔9，開微光，旁白-新聞播報］
+            </div>
+
+            <div class="p-3 rounded-lg bg-sky-950/20 border border-sky-800/60 text-sky-100 text-xs leading-relaxed my-2">
+              重大新聞報導，蔣老夫人於壽宴上含笑而逝，蔣總統感念母親為家為國付出多年，將母親送往慈湖陵寢與先總統一同，以國喪之禮為母厚葬。雖有不捨，蔣總統仍致力為國盡心，帶領著國家，壯大富強，開創中華民國的盛世。
+            </div>
+
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">
+              ［切音檔1，晚幾秒開燈］
+            </div>
+          </div>
+        `;
+      } else if (type === 'killer-win') {
+        // 【兇手獨贏結局】排除不在場角色、排除兇手墓誌銘，報導帶入兇手本名
+        const nonKillerPresentRoles = presentRoles.filter(r => r !== killer);
+        const epitaphsHtml = nonKillerPresentRoles.map(role => `
+          <div class="p-2.5 my-1.5 rounded-lg bg-theme-surface/50 border-l-2 border-amber-500 text-xs leading-relaxed text-gray-200">
+            <span class="font-bold text-amber-400 mr-1.5">［${role}］</span>${EPITAPHS_DEAD[role] || ''}
+          </div>
+        `).join('');
+
+        content = `
+          <div class="border-b border-theme-border pb-2.5 mb-3">
+            <h3 class="text-sm font-bold text-amber-400">【兇手獨贏結局】</h3>
+            <p class="text-[11px] text-gray-400 mt-0.5">真兇自投保命，其他人全數清除，獨自存活獲大勝</p>
+          </div>
+
+          <div class="space-y-2 text-xs text-gray-200 leading-relaxed">
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>就是這個人？你們確定？</p>
+            <div class="py-1 px-2.5 rounded bg-red-950/40 border-l-2 border-red-600 text-[11px] text-red-300 font-mono">（提示死人摀起耳朵，掏槍槍斃）</div>
+            <p><span class="font-bold text-theme-gold">蔣諦：</span><span class="text-amber-400 font-bold">${killer}</span>，請你進房。（真兇進布幕）你，很不錯，有用之人當留。其他人嘛，唉～一個個都辜負我的期望啊，可惜了，我身邊不留無用之人。</p>
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">［把假槍（無子彈）交給兇手逼他開槍，開spotlight］</div>
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>你已經通過第一關考驗了，但是還剩下一關，外面那些廢物，幫我把他們收拾了。</p>
+
+            <div class="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-800/50 my-2 space-y-1.5">
+              <div class="text-[11px] text-emerald-400 font-bold">▶ 若兇手開槍（無槍聲）：</div>
+              <p><span class="font-bold text-theme-gold">蔣諦：</span>哈哈哈～唉呀～膽量不錯嘛，你確實是有用之人，但你以為我會給你真槍嗎？往後的日子你就繼續跟著我，少不了你的好處。</p>
+              <div class="text-[10px] text-gray-400 font-mono">［用真槍朝外開槍，槍響同時關音檔，開紅燈］</div>
+            </div>
+
+            <div class="p-2.5 rounded-lg bg-red-950/30 border border-red-800/50 my-2 space-y-1.5">
+              <div class="text-[11px] text-red-400 font-bold">▶ 若兇手不開槍 或 朝 GM 開槍：</div>
+              <p><span class="font-bold text-theme-gold">蔣諦：</span>哈哈哈～你難道真的以為，我會直接把真槍交到你手裡嗎？</p>
+              <div class="text-[10px] text-red-300 font-mono">［朝兇手開槍，槍響同時關音檔，開紅燈，請兇手坐椅子］</div>
+              <p><span class="font-bold text-theme-gold">蔣諦：</span>唉呀～明明是塊好料子，怎麼自毀前程呢？真是可惜了。</p>
+              <div class="text-[10px] text-gray-400 font-mono">［朝外開槍］</div>
+            </div>
+
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>只有死人才能永遠嚴守秘密，哈哈哈～</p>
+
+            <div class="py-1 px-2.5 rounded bg-amber-950/40 border-l-2 border-amber-600 text-[11px] text-amber-300 font-mono mt-3">
+              ［切音檔8，關燈，類墓誌銘，兇手若活下請念好結局］
+            </div>
+
+            <div class="my-2 space-y-1">
+              ${epitaphsHtml}
+            </div>
+
+            <div class="py-1 px-2.5 rounded bg-sky-950/40 border-l-2 border-sky-600 text-[11px] text-sky-300 font-mono mt-3">
+              ［切音檔9，開微光，旁白-新聞播報］
+            </div>
+
+            <div class="p-3 rounded-lg bg-amber-950/30 border border-amber-700/60 text-amber-100 text-xs leading-relaxed my-2">
+              重大新聞報導，蔣老夫人於壽宴上含笑而逝，蔣總統感念母親為家為國付出多年，將母親送往慈湖陵寢與先總統一同，以國喪之禮為母厚葬。雖有不捨，蔣總統仍致力為國盡心，在 <b class="text-amber-400 text-sm underline underline-offset-4">${killerRealName}</b> 的盡心輔佐之下，帶領著國家，壯大富強，開創中華民國的盛世。
+            </div>
+
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">
+              ［切音檔1，晚幾秒開燈］
+            </div>
+          </div>
+        `;
+      } else if (type === 'good') {
+        // 【好結局】排除不在場角色、排除真兇後續
+        const nonKillerPresentRoles = presentRoles.filter(r => r !== killer);
+        const goodEpitaphsHtml = nonKillerPresentRoles.map(role => `
+          <div class="p-2.5 my-1.5 rounded-lg bg-theme-surface/50 border-l-2 border-emerald-500 text-xs leading-relaxed text-gray-200">
+            <span class="font-bold text-emerald-400 mr-1.5">（${role}）</span>${EPITAPHS_GOOD[role] || ''}
+          </div>
+        `).join('');
+
+        content = `
+          <div class="border-b border-theme-border pb-2.5 mb-3">
+            <h3 class="text-sm font-bold text-emerald-400">【好結局】</h3>
+            <p class="text-[11px] text-gray-400 mt-0.5">成功找出真兇繩之以法，眾人各司其職平靜退場</p>
+          </div>
+
+          <div class="space-y-2 text-xs text-gray-200 leading-relaxed">
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>就是這個賊人嗎？</p>
+            <div class="py-1 px-2.5 rounded bg-red-950/40 border-l-2 border-red-600 text-[11px] text-red-300 font-mono">（提示兇手 <span class="font-bold underline">${killer}</span> 摀起耳朵，掏槍槍斃）［開紅燈］</div>
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>很好，你們協助我找出了殺害我母親的賊人，該給你們的好處我不會少給，今日之事勿再多言，若讓我再聽到任何一絲耳語，你們是知道後果的。</p>
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>有些人，昏庸愚昧，再活著，也不過是浪費國家糧食。但有些人，多少還是能派上一些用場，就好好發揮自己的餘暉，為國家做點事吧，國家感謝你們的協助。</p>
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">［關燈］</div>
+            <p><span class="font-bold text-sky-400">旁白：</span>眾人默默無語的魚貫而出，離開了這座回歸平靜的宮殿，雖然不知道今天到底是出了甚麼事，但無知也是種幸福吧？</p>
+
+            <div class="py-1 px-2.5 rounded bg-amber-950/40 border-l-2 border-amber-600 text-[11px] text-amber-300 font-mono mt-3">
+              ［切音檔8，每人後續，兇手不念］
+            </div>
+
+            <div class="my-2 space-y-1">
+              ${goodEpitaphsHtml}
+            </div>
+
+            <div class="p-3 rounded-lg bg-theme-surface/60 border border-theme-border text-gray-300 text-xs leading-relaxed my-2">
+              回歸了日常，少了蔣夫人的蔣諦大總統似乎又更加的得心應手，在幾年間就雷厲風行地把政府整頓的煥然一新，於1991年解散萬年國會，自此全體國民生活富庶、歡欣鼓舞。
+            </div>
+
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">
+              ［切音檔1，晚幾秒開燈］
+            </div>
+          </div>
+        `;
+      } else if (type === 'special') {
+        // 【特殊結局：自然死亡】
+        const allPresentHtml = presentRoles.map(role => `
+          <div class="p-2.5 my-1.5 rounded-lg bg-theme-surface/50 border-l-2 border-purple-500 text-xs leading-relaxed text-gray-200">
+            <span class="font-bold text-purple-400 mr-1.5">（${role}）</span>${EPITAPHS_GOOD[role] || ''}
+          </div>
+        `).join('');
+
+        content = `
+          <div class="border-b border-theme-border pb-2.5 mb-3">
+            <h3 class="text-sm font-bold text-purple-400">【特殊結局：夫人自然死亡】</h3>
+            <p class="text-[11px] text-gray-400 mt-0.5">觸發猛爆性肝炎條件，揭曉背後真正主使者為蔣總統</p>
+          </div>
+
+          <div class="space-y-2 text-xs text-gray-200 leading-relaxed">
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>午夜時限已到，我要你們現在交出兇手。所有人閉上眼睛，指認出你認為的兇手，真正的兇手，把手指指向自己。</p>
+            <div class="py-1 px-2.5 rounded bg-purple-950/50 border-l-2 border-purple-600 text-[11px] text-purple-200 font-mono">［不帶人入房，隨扈帶手機出房播音檔10，低著頭手指房內］</div>
+            <p><span class="font-bold text-theme-gold">蔣諦：</span>哈哈哈哈哈哈～你們要不要看看我的隨扈的手指向誰？沒錯，把你們找來都是我的意思，而你們也成功的做到了自己該做的事。唉，老子都不老子了，夫人還垂簾聽政多年，總是把我當成他那長不大的兒子，以為我還是那個只能任她擺佈的棋子？哼！今天夫人自然死亡是老天的意思，看在我現在心情不錯，你們就離開吧。今日之事勿再多言，若讓我再聽到任何一絲耳語，你們是知道後果的。</p>
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">［入房，關燈］</div>
+            <p><span class="font-bold text-sky-400">旁白：</span>眾人默默無語的魚貫而出，離開了這座回歸平靜的宮殿，回歸了日常。</p>
+
+            <div class="py-1 px-2.5 rounded bg-amber-950/40 border-l-2 border-amber-600 text-[11px] text-amber-300 font-mono mt-3">
+              ［切音檔8，在場 7 位角色後續］
+            </div>
+
+            <div class="my-2 space-y-1">
+              ${allPresentHtml}
+            </div>
+
+            <div class="p-3 rounded-lg bg-theme-surface/60 border border-theme-border text-gray-300 text-xs leading-relaxed my-2">
+              回歸了日常，少了蔣夫人的蔣諦大總統似乎又更加的得心應手，在幾年間就雷厲風行地把政府整頓的煥然一新，於1991年解散萬年國會，自此全體國民生活富庶、歡欣鼓舞。
+            </div>
+
+            <div class="py-1 px-2.5 rounded bg-gray-800 text-[11px] text-gray-400 font-mono">
+              ［切音檔1，晚幾秒開燈］
+            </div>
+          </div>
+        `;
+      }
+
+      box.innerHTML = content;
+    }
+
+    // 頁籤切換控制
+    function switchTab(index) {
+      document.querySelectorAll('.tab-view').forEach((el, i) => {
+        el.classList.toggle('hidden', i !== index - 1);
+      });
+
+      document.querySelectorAll('.tab-nav-btn').forEach((btn, i) => {
+        if (i === index - 1) {
+          btn.classList.add('text-theme-gold', 'font-bold');
+          btn.classList.remove('text-gray-400');
+        } else {
+          btn.classList.remove('text-theme-gold', 'font-bold');
+          btn.classList.add('text-gray-400');
+        }
+      });
+
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }
+
+    // 頁面載入完成後初始化
+    window.onload = function() {
+      // 1. 優先判斷網址是否帶有 ?remove=1,5,7 或 #remove=1,5,7
+      const hasUrlParam = loadFromUrlParam();
+      
+      // 2. 如果網址沒帶參數，則自動載入 localStorage 儲存的名單
+      if (!hasUrlParam) {
+        loadRolesFromLocal();
+      }
+      
+      refreshState();
+    };
+  </script>
+</body>
+</html>
